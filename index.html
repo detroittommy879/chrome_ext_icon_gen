@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chrome Extension Icon Generator</title>
+    <link
+      href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.css"
+      rel="stylesheet"
+    />
+    <style>
+      body {
+        font-family: system-ui, -apple-system, sans-serif;
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+        background-color: #f5f5f5;
+      }
+      .container {
+        background-color: white;
+        padding: 2rem;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+      #imageContainer {
+        max-width: 100%;
+        margin: 20px 0;
+        display: none;
+      }
+      #preview {
+        max-width: 100%;
+        border-radius: 4px;
+      }
+      .button {
+        background-color: #4caf50;
+        border: none;
+        color: white;
+        padding: 15px 32px;
+        text-align: center;
+        text-decoration: none;
+        display: inline-block;
+        font-size: 16px;
+        margin: 4px 2px;
+        cursor: pointer;
+        border-radius: 4px;
+        transition: background-color 0.2s;
+      }
+      .button:hover {
+        background-color: #45a049;
+      }
+      .button:disabled {
+        background-color: #cccccc;
+        cursor: not-allowed;
+      }
+      #dropZone {
+        border: 2px dashed #ccc;
+        border-radius: 8px;
+        padding: 40px 20px;
+        text-align: center;
+        margin: 20px 0;
+        transition: all 0.2s;
+        background-color: #fafafa;
+      }
+      #dropZone.dragover {
+        background-color: #e8f5e9;
+        border-color: #4caf50;
+      }
+      #progress {
+        display: none;
+        margin: 10px 0;
+      }
+      .preview-container {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+        gap: 1rem;
+        margin: 1rem 0;
+        padding: 1rem;
+        background-color: #f8f9fa;
+        border-radius: 4px;
+      }
+      .icon-preview {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 0.5rem;
+        background: white;
+        border-radius: 4px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      }
+      .icon-preview img {
+        margin-bottom: 0.5rem;
+      }
+      .icon-preview span {
+        font-size: 0.8rem;
+        color: #666;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Chrome Extension Icon Generator</h1>
+      <p>
+        Upload an image to generate icons in all required Chrome extension
+        sizes.
+      </p>
+
+      <div id="dropZone">
+        <p>Drag and drop an image here or click to select</p>
+        <input
+          type="file"
+          id="fileInput"
+          accept="image/*"
+          style="display: none"
+        />
+      </div>
+
+      <div id="imageContainer">
+        <img id="preview" />
+        <div id="progress">
+          Processing icons... <span id="progressText">0%</span>
+        </div>
+        <div id="previewIcons" class="preview-container"></div>
+        <button id="generateBtn" class="button" disabled>Generate Icons</button>
+      </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script>
+      let cropper = null;
+      let currentFile = null;
+
+      const dropZone = document.getElementById("dropZone");
+      const fileInput = document.getElementById("fileInput");
+      const preview = document.getElementById("preview");
+      const imageContainer = document.getElementById("imageContainer");
+      const generateBtn = document.getElementById("generateBtn");
+      const progress = document.getElementById("progress");
+      const progressText = document.getElementById("progressText");
+      const previewIcons = document.getElementById("previewIcons");
+
+      // Handle drag and drop
+      dropZone.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        dropZone.classList.add("dragover");
+      });
+
+      dropZone.addEventListener("dragleave", () => {
+        dropZone.classList.remove("dragover");
+      });
+
+      dropZone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        dropZone.classList.remove("dragover");
+        const file = e.dataTransfer.files[0];
+        if (file && file.type.startsWith("image/")) {
+          handleFile(file);
+        }
+      });
+
+      dropZone.addEventListener("click", () => {
+        fileInput.click();
+      });
+
+      fileInput.addEventListener("change", (e) => {
+        if (e.target.files.length > 0) {
+          handleFile(e.target.files[0]);
+        }
+      });
+
+      function handleFile(file) {
+        currentFile = file;
+        const reader = new FileReader();
+
+        reader.onload = (e) => {
+          preview.src = e.target.result;
+          imageContainer.style.display = "block";
+          previewIcons.innerHTML = "";
+
+          if (cropper) {
+            cropper.destroy();
+          }
+
+          cropper = new Cropper(preview, {
+            aspectRatio: 1,
+            viewMode: 1,
+            dragMode: "move",
+            autoCropArea: 1,
+            restore: false,
+            guides: true,
+            center: true,
+            highlight: false,
+            cropBoxMovable: true,
+            cropBoxResizable: true,
+            toggleDragModeOnDblclick: false,
+          });
+
+          generateBtn.disabled = false;
+        };
+
+        reader.readAsDataURL(file);
+      }
+
+      async function generateIcon(canvas, size) {
+        return new Promise((resolve) => {
+          const scaledCanvas = document.createElement("canvas");
+          scaledCanvas.width = size;
+          scaledCanvas.height = size;
+          const ctx = scaledCanvas.getContext("2d");
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = "high";
+          ctx.drawImage(canvas, 0, 0, size, size);
+
+          scaledCanvas.toBlob((blob) => {
+            resolve(blob);
+          }, "image/png");
+        });
+      }
+
+      generateBtn.addEventListener("click", async () => {
+        if (!currentFile || !cropper) return;
+
+        generateBtn.disabled = true;
+        progress.style.display = "block";
+        previewIcons.innerHTML = "";
+
+        try {
+          // Get cropped canvas
+          const canvas = cropper.getCroppedCanvas();
+
+          // Generate icons for all sizes
+          const sizes = [16, 32, 48, 128];
+          const zip = new JSZip();
+
+          for (let i = 0; i < sizes.length; i++) {
+            const size = sizes[i];
+            progressText.textContent = `${Math.round(
+              (i / sizes.length) * 100
+            )}%`;
+
+            const blob = await generateIcon(canvas, size);
+            zip.file(`icon${size}.png`, blob);
+
+            // Create preview
+            const previewDiv = document.createElement("div");
+            previewDiv.className = "icon-preview";
+            const img = document.createElement("img");
+            img.src = URL.createObjectURL(blob);
+            img.width = size;
+            img.height = size;
+            const label = document.createElement("span");
+            label.textContent = `${size}x${size}`;
+            previewDiv.appendChild(img);
+            previewDiv.appendChild(label);
+            previewIcons.appendChild(previewDiv);
+          }
+
+          // Generate and download zip
+          const content = await zip.generateAsync({
+            type: "blob",
+            compression: "DEFLATE",
+            compressionOptions: {
+              level: 9,
+            },
+          });
+
+          const url = URL.createObjectURL(content);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = "chrome-extension-icons.zip";
+          document.body.appendChild(a);
+          a.click();
+          URL.revokeObjectURL(url);
+          a.remove();
+
+          progressText.textContent = "100%";
+          setTimeout(() => {
+            progress.style.display = "none";
+            generateBtn.disabled = false;
+          }, 1000);
+        } catch (error) {
+          console.error("Error generating icons:", error);
+          alert("Error generating icons. Please try again.");
+          generateBtn.disabled = false;
+          progress.style.display = "none";
+        }
+      });
+    </script>
+  </body>
+</html>
